@@ -18,32 +18,37 @@ short state;
 int rescueBotCount = 0;
 
 //states
-#define NEWROUND       0
 #define DISPERSAL      1
 #define TURNFORSOUND   2
 #define GOTOSOUND      3
 #define FOUNDPRINCESS  4
 #define IMTHEPRINCESS  5
-#define BOT_COUNT 5
+
+#define BOT_COUNT 5 //Number of rescue bots to assemble before princess is rescued.
+
+//Sound-seeking method
+//1 to find loudest sound
+//2 to find quitest sound
+//3 to use vector addition population encoder
+#define USE_LOUDEST    1
+#define USE_SOFTEST    2
+#define USE_VECTORADD  3
 
 
-/*void VectorAddition(short &oldDegrees, short &oldMagnitude,short newDegrees, short newMagnitude)
+void VectorAddition(short &oldDegrees, short &oldMagnitude,short newDegrees, short newMagnitude)
 {
-
-	short xDecomp = ( (oldMagnitude) * cosDegrees((oldDegrees/2)) ) + ( newMagnitude * cosDegrees(newDegrees/2) );
-	short yDecomp = ( (oldMagnitude) * sinDegrees((oldDegrees/2)) ) + ( newMagnitude * sinDegrees(newDegrees/2) );
+	short xDecomp = (oldMagnitude * cosDegrees(oldDegrees)) + (newMagnitude * cosDegrees(newDegrees));
+	short yDecomp = (oldMagnitude * sinDegrees(oldDegrees)) + (newMagnitude * sinDegrees(newDegrees));
 	oldMagnitude = (xDecomp^2 + yDecomp^2)^.5;
-	oldDegrees = radiansToDegrees(acos(xDecomp/oldMagnitude))*2;
+	oldDegrees = radiansToDegrees(acos(xDecomp/oldMagnitude));
 	if (xDecomp < 0)
 	{
-		if (yDecomp < 0) {oldDegrees = oldDegrees + 360;}     //quadrant 3
-		else {oldDegrees = oldDegrees + 180;}                 //quadrant 2
+		if (yDecomp < 0) {oldDegrees = oldDegrees + 180;}
+		else {oldDegrees = oldDegrees + 90;}
 	}
-	else
-	{
-		if (yDecomp < 0) {oldDegrees = oldDegrees + 540;}     //quadrant 4
-	}
-}*/
+	else { if (yDecomp < 0) {oldDegrees = oldDegrees + 270;} }
+	//DisplayData(oldDegrees,false);
+}
 
 void DisplayData(short data, bool firstDisplay)
 {
@@ -76,7 +81,7 @@ void GoReverse(short distance)  //input is the distance we wish to go in inches
 {
 	nMotorEncoder[motorA] = 0;
 	nSyncedTurnRatio = 100;
-
+	
 	//1 rotation is approximately 7.25 inches
 	while(nMotorEncoder[motorA] > -1 * distance * (360/7.25))  //Calculates distance in inches
 	{                                                   //as a function of wheel rotations
@@ -116,7 +121,7 @@ int getMaxSoundForInterval (int interval)
 	return soundValue;
 }
 
-bool fBeepDetection ()
+bool fBeepDetection () //Check and return if the detected sound is in a beep pattern.
 {
 	bool beepDetection = false;
 	ClearTimer (T2);
@@ -134,7 +139,7 @@ bool fBeepDetection ()
 	return beepDetection;
 }
 
-task playRescueTone ()
+task playRescueTone () // Rescue bots play a tone for 500 msec when the princess is in silent mode.
 {
 	wait1Msec (10);
 	if (SensorValue[soundSensor] < 70)
@@ -152,28 +157,34 @@ task main ()
 		switch (state)
 		{
 			case DISPERSAL:
-
+				
 				GoReverse(20);
 				TurnRight (180);
 				motor(motorA) = goSpeed;
 				state = TURNFORSOUND;
 				wait10Msec(2000);
 				break;
-
-
+				
+				
 			case TURNFORSOUND:
-
+				//Sound-seeking method
+				//USE_LOUDEST: go towards the loudest sound
+				//USE_SOFTEST: go away from the quitest sound
+				//USE_VECTORADD: use vector addition, averaging all readings
 				nSyncedMotors = synchNone;                                              //Will occasionally throw "cannot update slave sync" in nMotorEncoder otherwise
 				nMotorEncoder[motorA] = 0;                                              //reset nMotorEncoder motorA
 				nMotorEncoder[motorB] = 0;                                              //reset nMotorEncoder motorB - redundant
 				nSyncedMotors         = synchAB;                                        //Sync Motors for (CW/CCW?)turn - A master, B slave
 				nSyncedTurnRatio      = -100;                                           //Sync for in place turning
 				oldsoundMax           = 0;                                              //reset oldsoundMax
-				peakMotorEncoder    = 0;                                                //reset turn1peakdBmotorValue
-				wait10Msec(30);
+				peakMotorEncoder      = 0;                                              //reset turn1peakdBmotorValue
+				
+				wait10Msec(50);
+				short magnitude = 0;
 				short motorEncoderTarget = 0;
-				//short magnitude = SensorValue[soundSensor];
-				while((nMotorEncoder[motorA] < turnRadius))         //loop for Turn direction 1 and sample
+				int soundReading = 0;
+				
+				while(nMotorEncoder[motorA] < turnRadius)                               //loop for Turn direction 1 and sample
 				{
 					motorEncoderTarget = motorEncoderTarget + turnIncrement;
 					motor[motorA] = turnSpeed;                                            //turn at turn speed
@@ -182,30 +193,59 @@ task main ()
 						wait1Msec(1);
 					}
 					motor[motorA] = 0;                                                    //Estop
-					wait10Msec(30);
-					DisplayData(SensorValue[soundSensor],true);
-					DisplayData(oldsoundMax,false);
-
-					//VectorAddition(peakMotorEncoder,magnitude,nMotorEncoder[motorA],SensorValue[soundSensor]);
-          int currentSound = getMaxSoundForInterval (500);
-					//if(SensorValue[soundSensor] > oldsoundMax)                            //compare sound sensor values current vs. old.  If higher
-					if (currentSound > oldsoundMax)
+					wait10Msec(30);                                                       //Wait for motor noise to die down
+					short ave = 0;
+					
+					for (short i=0;i < 33;i++)                                            //Average sound readings over 2/3 of a second
 					{
-						//oldsoundMax = SensorValue[soundSensor];                         //update value to current
-					  oldsoundMax = currentSound;
-						peakMotorEncoder = nMotorEncoder[motorA];                         //record motor position
+						soundReading = SensorValue[soundSensor];
+						DisplayData(soundReading,true);
+						ave = ave+soundReading;
+						wait10Msec(2);
+					}
+					ave = ave/33;
+					
+					
+					if (TURNFORSOUND_METHOD==USE_LOUDEST)
+					{
+						DisplayData(oldsoundMax,false);
+						if(ave > oldsoundMax)                                                 //compare sound sensor values current vs. old.  If higher
+						{
+							oldsoundMax = ave;                                                  //update value to current
+							peakMotorEncoder = nMotorEncoder[motorA];                           //record motor position
+						}
+					}
+					else if (TURNFORSOUND_METHOD==USE_SOFTEST)
+					{
+						DisplayData(oldsoundMax,false);
+						if(ave < oldsoundMax)                                                 //compare sound sensor values current vs. old.  If higher
+						{
+							oldsoundMax = ave;                                                  //update value to current
+							peakMotorEncoder = nMotorEncoder[motorA];                           //record motor position
+						}
+					}
+					else
+					{
+						VectorAddition(peakMotorEncoder,magnitude,nMotorEncoder[motorA]/2,ave^2);
+						DisplayData(ave,true);
+						DisplayData(peakMotorEncoder,false);
+						
 					}
 				}
 				oldsoundMax           = 0;                                              //reset oldsoundMax
-				motorEncoderTarget = turnRadius - turnIncrement - peakMotorEncoder;
-
-				state = GOTOSOUND;                                                      //turnforsound complete, go to state (GOTOSOUND)
-				break;
-
-
-			case GOTOSOUND:                                                           //GOTOSOUND state
-
-				oldsoundMax = SensorValue[soundSensor];                                 //Set old sound max == current sensor lvl
+				switch(TURNFORSOUND_METHOD)
+				{
+				case USE_LOUDEST:
+					motorEncoderTarget = turnRadius - turnIncrement - (peakMotorEncoder*2);
+					break;
+				case USE_SOFTEST:
+					motorEncoderTarget = turnRadius - turnIncrement - peakMotorEncoder + 360;
+					break;
+				case USE_VECTORADD:
+					motorEncoderTarget = turnRadius - turnIncrement - (peakMotorEncoder*2);
+					break;
+			}
+				
 				nSyncedMotors = synchNone;                                              //Will occasionally throw "cannot update slave sync" in nMotorEncoder otherwise
 				nMotorEncoder[motorA] = 0;
 				nMotorEncoder[motorB] = 0;
@@ -216,25 +256,27 @@ task main ()
 					motor(motorB) = gototurnSpeed;                                        //Turn at gototurnSpeed rate
 				}
 				motor(motorB) = 0;                                                      //Estop
-
 				nSyncedMotors         = synchAB;
 				nSyncedTurnRatio      = 100;                                            //Sync for forward motion
+				state = GOTOSOUND;                                                      //turnforsound complete, go to state (GOTOSOUND)
+				break;
+				
+				
+			case GOTOSOUND:                                                           //GOTOSOUND state
+				
 				motor(motorA) = goSpeed;
-				wait10Msec(5);
-
-				while (state==GOTOSOUND) //go loop - go forward while current sound > oldsound - soundbuffer
+				wait10Msec(10);                                                         //Get going before checking sound
+				oldsoundMax = SensorValue[soundSensor];                                 //Set old sound max == current sensor lvl
+				while (state==GOTOSOUND)                                                //go loop - go forward while current sound > oldsound - soundbuffer
 				{
-
 					motor(motorA) = goSpeed;
 					DisplayData(SensorValue[soundSensor],true);
-					if (SensorValue[soundSensor] > oldsoundMax) { oldsoundMax = SensorValue(soundSensor); }
-					DisplayData(oldsoundMax,false);
-
-					if (SensorValue[soundSensor] > 93)
-					{
-						state = FOUNDPRINCESS;                                        //Go to state (FOUNDPRINCESS)
+					if (SensorValue[soundSensor] > oldsoundMax) 
+					{ 
+						oldsoundMax = SensorValue(soundSensor); 
 					}
-					else if (SensorValue[touchSensor]== 1)
+					DisplayData(oldsoundMax,false);
+					if (SensorValue[touchSensor]==1)
 					{
 						motor(motorA) = 0;
 						GoReverse(4);
@@ -242,40 +284,44 @@ task main ()
 						motor(motorA) = goSpeed;
 						wait10Msec(200);
 					}
-					else if(SensorValue[soundSensor] < oldsoundMax - soundBuffer)
+					if (SensorValue[soundSensor] > foundSoundLvl)
 					{
-						state = TURNFORSOUND;
+						state = FOUNDPRINCESS;                                              //Go to state (FOUNDPRINCESS)
+					}
+					if(SensorValue[soundSensor] < oldsoundMax - soundBuffer)
+					{
+						state = TURNFORSOUND;                                               //Go to state (TURNFORSOUND)
 					}
 				}
 				break;
-
-
+				
+				
 			case FOUNDPRINCESS:                                                  //FOUNDPRINCESS state
-
+				
 				// code for FOUNDPRINCESS here
-
+				
 				StartTask (playRescueTone); //Wait for Princess to shut up and play a tone once to inform her rescue status
 				while(1)
 				{
 					if (fBeepDetection ()) //Check for Beep vs Continuous noise made by the princess
 					{
-					  nxtDisplayCenteredTextLine(2, "Rescure Bot");
-				    nxtDisplayCenteredBigTextLine(3, "Beeping");
+						nxtDisplayCenteredTextLine(2, "Rescure Bot");
+						nxtDisplayCenteredBigTextLine(3, "Beeping");
 						motor(motorA) = 0;
 					}
 					else //When a continuous noise for 3 sec is made by the princess.
 					{
-					  nxtDisplayCenteredTextLine(2, "Rescure Bot");
-				    nxtDisplayCenteredBigTextLine(3, "Disperse");
+						nxtDisplayCenteredTextLine(2, "Rescure Bot");
+						nxtDisplayCenteredBigTextLine(3, "Disperse");
 						state = DISPERSAL;
 						break;
 					}
 				}
 				break;
-
-
+				
+				
 			case IMTHEPRINCESS:
-
+				
 				//Do Princess like stuff
 				nxtDisplayCenteredTextLine(2, "Bot Count");
 				nxtDisplayCenteredBigTextLine(3, "%d", rescueBotCount);
@@ -283,7 +329,7 @@ task main ()
 				{
 					if (rescueBotCount < BOT_COUNT)
 					{
-					  // Play-mode : short pulse for 500 msec
+						// Play-mode : short pulse for 500 msec
 						PlayTone(1184, 500);
 						wait1Msec (10);
 						// Silent-mode : listen to sound for 500 msec
