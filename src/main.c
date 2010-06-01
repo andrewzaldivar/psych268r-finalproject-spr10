@@ -4,7 +4,7 @@
 //globals
 #define soundBuffer   13
 #define foundSoundLvl 90
-#define turnRadius    800
+#define turnRadius    720
 #define turnIncrement 90
 #define turnBack      0
 #define turnSpeed     20
@@ -90,6 +90,12 @@ void GoReverse(short distance)  //input is the distance we wish to go in inches
 task main ()
 {
   state = TURNFORSOUND;
+  motor[motorA] = goSpeed;
+  motor[motorB] = goSpeed;
+  wait10Msec(50);
+  motor[motorA] = 0;
+  motor[motorB] = 0;
+  nDatalogSize = 2000;
   while(1)
   {
 
@@ -104,41 +110,43 @@ task main ()
       //USE_SOFTEST: go away from the quitest sound
       //USE_VECTORADD: use vector addition, averaging all readings
 
+
+      AddToDatalog(101);
+
+      motor[motorA] = 0;
       nSyncedMotors = synchNone;                                              //Will occasionally throw "cannot update slave sync" in nMotorEncoder otherwise
       nMotorEncoder[motorA] = 0;                                              //reset nMotorEncoder motorA
       nMotorEncoder[motorB] = 0;                                              //reset nMotorEncoder motorB - redundant
       nSyncedMotors         = synchAB;                                        //Sync Motors for (CW/CCW?)turn - A master, B slave
       nSyncedTurnRatio      = -100;                                           //Sync for in place turning
       oldsoundMax           = 0;                                              //reset oldsoundMax
+      if(TURNFORSOUND_METHOD == USE_SOFTEST) {oldsoundMax = 100;}
       peakMotorEncoder      = 0;                                              //reset turn1peakdBmotorValue
+
+
 
       wait10Msec(50);
       short magnitude = 0;
       short motorEncoderTarget = 0;
       int soundReading = 0;
 
-      while(nMotorEncoder[motorA] < turnRadius)                               //loop for Turn direction 1 and sample
-      {
-        motorEncoderTarget = motorEncoderTarget + turnIncrement;
-        motor[motorA] = turnSpeed;                                            //turn at turn speed
-        while(nMotorEncoder[motorA] < motorEncoderTarget)                     //loop for incremental turn
-        {
-          wait1Msec(1);
-        }
-        motor[motorA] = 0;                                                    //Estop
-        wait10Msec(30);                                                       //Wait for motor noise to die down
-        short ave = 0;
 
+      //Loop through 1 circle and sample sound levels
+      while(nMotorEncoder[motorA] <= turnRadius)
+      {
+        short ave = 0;
+        AddToDatalog(1,nMotorEncoder[motorA]/2);
         for (short i=0;i < 33;i++)                                            //Average sound readings over 2/3 of a second
         {
           soundReading = SensorValue[soundSensor];
+          AddToDatalog(2,soundReading);
           DisplayData(soundReading,true);
           ave = ave+soundReading;
           wait10Msec(2);
         }
         ave = ave/33;
 
-
+        //Decision block for what to do with recorded sound levels
         if (TURNFORSOUND_METHOD==USE_LOUDEST)
         {
           DisplayData(oldsoundMax,false);
@@ -164,21 +172,36 @@ task main ()
           DisplayData(peakMotorEncoder,false);
 
         }
+
+        //Incremental turn motor control
+        motorEncoderTarget = motorEncoderTarget + turnIncrement;
+        motor[motorA] = turnSpeed;                                            //turn at turn speed
+        while(nMotorEncoder[motorA] < motorEncoderTarget)                     //loop for incremental turn
+        {
+          wait1Msec(1);
+        }
+        motor[motorA] = 0;                                                    //Estop
+        wait10Msec(30);                                                       //Wait for motor noise to die down
+
+
       }
       oldsoundMax           = 0;                                              //reset oldsoundMax
       switch(TURNFORSOUND_METHOD)
       {
       case USE_LOUDEST:
-        motorEncoderTarget = turnRadius - turnIncrement - (peakMotorEncoder*2);
+        motorEncoderTarget = turnRadius - peakMotorEncoder;
         break;
       case USE_SOFTEST:
-        motorEncoderTarget = turnRadius - turnIncrement - peakMotorEncoder + 360;
+        motorEncoderTarget = turnRadius - peakMotorEncoder + 360;
         break;
       case USE_VECTORADD:
-        motorEncoderTarget = turnRadius - turnIncrement - (peakMotorEncoder*2);
+        motorEncoderTarget = turnRadius - (peakMotorEncoder*2);
         break;
       }
+      SaveNxtDatalog();
 
+
+      //Turn to selected direction (value in motorEncoderTarget)
       nSyncedMotors = synchNone;                                              //Will occasionally throw "cannot update slave sync" in nMotorEncoder otherwise
       nMotorEncoder[motorA] = 0;
       nMotorEncoder[motorB] = 0;
@@ -237,9 +260,7 @@ task main ()
       // state = NEWROUND;                                                    // end of FOUNDPRINCESS code, return bots to NEWROUND state
       while(true)
       {
-        motor(motorA) = 0;
-        nVolume = 4;
-        PlayTone(1184,100);
+        DisplayData(0,false);
       }
       break;
 
