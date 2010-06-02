@@ -13,12 +13,26 @@
 #define gototurnSpeed 40
 #define goSpeed       30
 
+//SONAR
+#define sonarTurnSpeed 20                     // Speed at which princess scans surrounds
+#define sonarCloseEnoughDist_cm 40            // Dist(cm) radius away from princess to consider other robots "close"
+#define sonarSufficientlySurroundedRatio 0.25 // Ratio of close:notClose sonar readings that trigger pricess-is-"rescued".
+
 
 //initiate variables
 short oldsoundMax;
 short peakMotorEncoder;
 short state;
 int rescueBotCount = 0;
+
+//Sonar init variables
+int num_total_sonar_samples = 0;
+int num_close_enough_sonar_samples = 0;
+float sonar_surrounded_ratio = 0.0;
+int sonar_start_motor_enc = 0;
+bool isSonarSurrounded = false;
+float TURN=(360.00/7.00)*3.14*(15.00/14.00); // 1/4 turn rotation encoder clicks, assuming standard chassis.
+int sonarClicksFullTurn = 4 * (int) TURN; // a full turn used for sonar-based scan of surroundings.
 
 //states
 #define TEST           0
@@ -42,6 +56,9 @@ int rescueBotCount = 0;
 #define USE_SOFTEST    2
 #define USE_VECTORADD  3
 #define TURNFORSOUND_METHOD USE_LOUDEST
+
+//Cluster-detection (rescue detection) method/strategy
+#define USE_SONAR 1  // turns on the use of sonar-based detection in conjunction with the pulse-based.
 
 
 void VectorAddition(short &oldDegrees, short &oldMagnitude,short newDegrees, short newMagnitude)
@@ -158,6 +175,87 @@ task playRescueTone () // Rescue bots play a tone for 500 msec when the princess
 			wait1Msec(510);
 			break;
 		}
+	}
+}
+
+
+//SONAR
+void InitSonarDetection() { // Resets sonar-based global variables.
+	
+	// Reset the counts of samples
+	num_total_sonar_samples = 0;
+	num_close_enough_sonar_samples = 0;
+	
+	// Reset the (local) motor encoding used here so the robot starts spinning
+	// around another revolution.
+	sonar_start_motor_enc = nMotorEncoder[motorA]; // Assuming motorA rotates positively while turning
+	
+	// Reset the proportion of samples that this robot
+	// thinks it is "surrounded" by close-by objects.
+	sonar_surrounded_ratio = 0.0;
+	
+	// Reset so this thinks it is not surrounded.
+	isSonarSurrounded = false;
+}
+
+void ContinueSonarDetection() { //Perform a sample-check using sonar and set robot turning.
+	// Increment our sample count per 360-degree turn.
+	// (Make sure to do this before division, else div-by-0.)
+	num_total_sonar_samples++;
+	
+	// If the sample was close enough, increment the close
+	// enough count.
+	
+	if ( SensorValue(sonar) < sonarCloseEnoughDist_cm ) {
+		num_close_enough_sonar_samples++;
+	}
+	
+	// Calculate the current surrounded ratio
+	// Commented out since we are not showing this on display.  Uncomment if
+	// you want to use this to show what the robot sees, "as it sees it".
+	// Calculation is in the end-of-turn if-statement below because that
+	// is the only time we need to check this ratio.
+	//sonar_surrounded_ratio = (float)num_close_enough_sonar_samples / (float)num_total_sonar_samples;
+	
+	// keep turning
+	TurnRightIndefinite( sonarTurnSpeed );
+	
+	// Only do some other checks if f a full circle has been turned
+	if ( (nMotorEncoder[motorB] - sonar_start_motor_enc) < sonarClicksFullTurn ) {
+		
+		// We turned a full circle around.
+		// Determine how surrounded this robot thinks it is in this cirled turn.
+		sonar_surrounded_ratio = (float)num_close_enough_sonar_samples / (float)num_total_sonar_samples;
+		
+		// Only on full turns do we check if the
+		// robot is sufficiently surrounded
+		if ( sonar_surrounded_ratio > (float) sonarSufficientlySurroundedRatio ) {
+			isSonarSurrounded = true;
+		}
+		else {
+			
+			// The robot has turned a full circle and not enough
+			// surrounding stuff was found.
+			// Therefore, we should reset all the sonar-based
+			// detection variables so that it can start a new
+			// circle afresh.
+			InitSonarDetection();
+			
+		}
+	}
+	
+}
+
+void PauseSonarDetection() { // use when princess needs to "listen" (i.e. turn off motors)
+	StopMotors();
+}
+
+task sonarDetection ()
+{
+	InitSonarDetection();
+	if (!isSonarSurrounded)
+	{
+		ContinueSonarDetection();
 	}
 }
 
@@ -362,6 +460,10 @@ task main ()
 				
 			case IMTHEPRINCESS:
 				
+				if (USE_SONAR == 1) 
+				{  // SONAR-based in parallel with pulse-based
+					StartTask(sonarDetection);
+				}
 				//Do Princess like stuff
 				while (1)
 				{
@@ -390,6 +492,8 @@ task main ()
 					{
 						wait1Msec (5100); //Once rescued go silent to kick the rescue bots into disperse mode.
 						rescueBotCount = 0; //Reset rescue bot count
+						InitSonarDetection();
+						StopTask(sonarDetection);	//Reset sonar-based detection variables.
 						state = DISPERSAL;
 						break;
 					}
