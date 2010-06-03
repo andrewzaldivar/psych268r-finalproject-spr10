@@ -94,7 +94,7 @@ bool inTrap() {
 // Check to see if the behavior state should change
 // returns behavior state
 short checkBehaviorState(short oldsoundMax) {
-
+	
 	if (inTrap() && SensorValue[soundSensor] < foundSoundLv2)
 	{
 		return IMTHEPRINCESS;
@@ -145,7 +145,7 @@ void GoReverse(short distance)  //input is the distance we wish to go in inches
 {
 	nMotorEncoder[motorA] = 0;
 	nSyncedTurnRatio = 100;
-
+	
 	//1 rotation is approximately 7.25 inches
 	while(nMotorEncoder[motorA] > -1*distance*(360/7.25))  //Calculates distance in inches
 	{                                                      //as a function of wheel rotations
@@ -223,27 +223,27 @@ task playRescueTone () // Rescue bots play a tone for 500 msec when the princess
 //SONAR FUNCTIONS
 
 void TurnRightIndefinite(short turn_speed) { //Function to rotate the robot to the right. Returns immediately, robot still turns.
-
+	
 	nSyncedTurnRatio = -100; //Makes the wheels turn in opposite directions
-
+	
 	motor[motorA] = turn_speed; //Establish turn power
-
+	
 }
 
 void InitSonarDetection() { // Resets sonar-based global variables.
-
+	
 	// Reset the counts of samples
 	num_total_sonar_samples = 0;
 	num_close_enough_sonar_samples = 0;
-
+	
 	// Reset the (local) motor encoding used here so the robot starts spinning
 	// around another revolution.
 	sonar_start_motor_enc = nMotorEncoder[motorA]; // Assuming motorA rotates positively while turning
-
+	
 	// Reset the proportion of samples that this robot
 	// thinks it is "surrounded" by close-by objects.
 	sonar_surrounded_ratio = 0.0;
-
+	
 	// Reset so this thinks it is not surrounded.
 	isSonarSurrounded = false;
 }
@@ -252,48 +252,48 @@ void ContinueSonarDetection() { //Perform a sample-check using sonar and set rob
 	// Increment our sample count per 360-degree turn.
 	// (Make sure to do this before division, else div-by-0.)
 	num_total_sonar_samples++;
-
+	
 	// If the sample was close enough, increment the close
 	// enough count.
-
+	
 	if ( SensorValue(sonar) < sonarCloseEnoughDist_cm ) {
 		num_close_enough_sonar_samples++;
 	}
-
+	
 	// Calculate the current surrounded ratio
 	// Commented out since we are not showing this on display.  Uncomment if
 	// you want to use this to show what the robot sees, "as it sees it".
 	// Calculation is in the end-of-turn if-statement below because that
 	// is the only time we need to check this ratio.
 	//sonar_surrounded_ratio = (float)num_close_enough_sonar_samples / (float)num_total_sonar_samples;
-
+	
 	// keep turning
 	TurnRightIndefinite( sonarTurnSpeed );
-
+	
 	// Only do some other checks if f a full circle has been turned
 	if ( (nMotorEncoder[motorB] - sonar_start_motor_enc) < sonarClicksFullTurn ) {
-
+		
 		// We turned a full circle around.
 		// Determine how surrounded this robot thinks it is in this cirled turn.
 		sonar_surrounded_ratio = (float)num_close_enough_sonar_samples / (float)num_total_sonar_samples;
-
+		
 		// Only on full turns do we check if the
 		// robot is sufficiently surrounded
 		if ( sonar_surrounded_ratio > (float) sonarSufficientlySurroundedRatio ) {
 			isSonarSurrounded = true;
 		}
 		else {
-
+			
 			// The robot has turned a full circle and not enough
 			// surrounding stuff was found.
 			// Therefore, we should reset all the sonar-based
 			// detection variables so that it can start a new
 			// circle afresh.
 			InitSonarDetection();
-
+			
 		}
 	}
-
+	
 }
 
 task sonarDetection ()
@@ -309,12 +309,11 @@ task sonarDetection ()
 }
 
 // END SONAR FUNCTIONS
-
 void imThePrincess() {
 	motor(motorA) = 0;
 	motor(motorB) = 0;
 	wait10Msec(200);
-
+	
 	if (USE_SONAR == 1)
 	{  // SONAR-based in parallel with pulse-based
 		StartTask(sonarDetection);
@@ -324,7 +323,7 @@ void imThePrincess() {
 	{
 		DisplayData(state, true);
 		DisplayData(rescueBotCount, false);
-
+		
 		// If the robot is not sufficiently surrounded (rescued) by other robots,
 		if (rescueBotCount < BOT_COUNT)
 		{
@@ -332,7 +331,7 @@ void imThePrincess() {
 			nVolume = 4;
 			PlayTone(1184, 85); ///Async?!
 			wait1Msec (850);
-
+			
 			// Silent-mode : listen to sound for 500 msec
 			int rescueSoundValue = getMaxSoundForInterval(500);
 			if (rescueSoundValue > RESCUEBOT_SOUND_THRESHOLD) //if there is a rescue-bot around making a noise
@@ -342,17 +341,31 @@ void imThePrincess() {
 			}
 			wait1Msec (100);
 		}
-
+		
 		// Else, the robot is fully surrounded/rescued,
-		if (rescueBotCount >= BOT_COUNT && isSonarSurrounded)
+		if (USE_SONAR == 1)
 		{
-			wait1Msec (5100); //Once rescued go silent to kick the rescue bots into disperse mode.
-			rescueBotCount = 0; //Reset rescue bot count
-			InitSonarDetection();
-			StopTask(sonarDetection);	//Reset sonar-based detection variables.
-			moveAwayFromTrap();
-			state = GOTOSOUND;
-			break;
+			if (rescueBotCount >= BOT_COUNT && isSonarSurrounded)
+			{
+				wait1Msec (5100); //Once rescued go silent to kick the rescue bots into disperse mode.
+				rescueBotCount = 0; //Reset rescue bot count
+				InitSonarDetection();
+				StopTask(sonarDetection);	//Reset sonar-based detection variables.
+				moveAwayFromTrap();
+				state = GOTOSOUND;
+				break;
+			}
+		}
+		else 
+		{
+			if (rescueBotCount >= BOT_COUNT)
+			{
+				wait1Msec (5100); //Once rescued go silent to kick the rescue bots into disperse mode.
+				rescueBotCount = 0; //Reset rescue bot count
+				moveAwayFromTrap();
+				state = GOTOSOUND;
+				break;
+			}
 		}
 	}
 }
@@ -399,15 +412,15 @@ void foundPrincess() {
 }
 
 void soundSeeking() {
-
+	
 	short TURNFORSOUND_METHOD = USE_LOUDEST;
 	//Sound-seeking method
 	//USE_LOUDEST: go towards the loudest sound
 	//USE_SOFTEST: go away from the quitest sound
 	//USE_VECTORADD: use vector addition, averaging all readings
-
+	
 	//	AddToDatalog(101);
-
+	
 	motor[motorA] = 0;
   	nSyncedMotors = synchNone;                                              //Will occasionally throw "cannot update slave sync" in nMotorEncoder otherwise
 	nMotorEncoder[motorA] = 0;                                              //reset nMotorEncoder motorA
@@ -419,15 +432,15 @@ void soundSeeking() {
 	{
 		oldsoundMax = 100;
 	}
-
+	
 	peakMotorEncoder      = 0;                                      //reset turn1peakdBmotorValue
-
+	
 	wait10Msec(50);
 	short magnitude = 0;
 	short motorEncoderTarget = 0;
 	int soundReading = 0;
-
-
+	
+	
 	//Loop through 1 circle and sample sound levels
 	while(nMotorEncoder[motorA] <= turnRadius)
 	{
@@ -441,9 +454,9 @@ void soundSeeking() {
 			ave = ave+soundReading;
 			wait10Msec(2);
 		}
-
+		
 		ave = ave/33;
-
+		
 		//Decision block for what to do with recorded sound levels
 		if (TURNFORSOUND_METHOD==USE_LOUDEST)
 		{
@@ -469,7 +482,7 @@ void soundSeeking() {
 			// DisplayData(ave,true);
 			// DisplayData(peakMotorEncoder,false);
 		}
-
+		
 		//Incremental turn motor control
 		motorEncoderTarget = motorEncoderTarget + turnIncrement;
 		motor[motorA] = turnSpeed;                                            //turn at turn speed
@@ -477,11 +490,11 @@ void soundSeeking() {
 		{
 			wait1Msec(1);
 		} // end incremental turn motor control loop
-
+		
 		motor[motorA] = 0;                                                    //Estop
 		wait10Msec(30);                                                       //Wait for motor noise to die down
 	} // end while loop
-
+	
 	oldsoundMax = 0; // reset old sound
 	switch(TURNFORSOUND_METHOD)
 	{
@@ -495,9 +508,9 @@ void soundSeeking() {
       	  	motorEncoderTarget = turnRadius - (peakMotorEncoder*2);
         	break;
 	}
-
+	
 	//      	SaveNxtDatalog();
-
+	
 	//Turn to selected direction (value in motorEncoderTarget)
 	nSyncedMotors = synchNone;                                              //Will occasionally throw "cannot update slave sync" in nMotorEncoder otherwise
 	nMotorEncoder[motorA] = 0;
@@ -508,7 +521,7 @@ void soundSeeking() {
 	{
 		motor(motorB) = gototurnSpeed;                                        //Turn at gototurnSpeed rate
 	}
-
+	
  	motor(motorB) = 0;                                                      //Estop
  	nSyncedMotors         = synchAB;
 	nSyncedTurnRatio      = 100;                                            //Sync for forward motion
@@ -528,27 +541,27 @@ task main() {
 	nSyncedTurnRatio = 100;
 	state = TURNFORSOUND;
 	DisplayData(state,true);
-
+	
 	while(1) {
-
+		
 		wait10Msec(20);
 		DisplayData(state,true);
-
+		
 		switch (state) {
 			case GOTOSOUND:                                             //GOTOSOUND state
 				//motor(motorA) = goSpeed;
 				wait10Msec(10);                                          //Get going before checking sound
 				oldsoundMax = SensorValue[soundSensor];                  //Set old sound max == current sensor lvl
-
+				
 				while (state == GOTOSOUND) {                               //go loop - go forward while current sound > oldsound - soundbuffer
 					motor(motorA) = goSpeed;
 					//DisplayData(SensorValue[soundSensor],true);
 					if (SensorValue[soundSensor] > oldsoundMax) {
 						oldsoundMax = SensorValue(soundSensor);
 					}
-
+					
 					//DisplayData(oldsoundMax,false);
-
+					
 					// Wall behavior.
 					if (SensorValue[touchSensor]==1){
 						motor(motorA) = 0;
@@ -557,12 +570,12 @@ task main() {
 						motor(motorA) = goSpeed;
 						wait10Msec(200);
 					}
-
+					
 					state = checkBehaviorState(oldsoundMax);
 					DisplayData(state,true);
 					//DisplayData(SensorValue[lightSensor],false);
 				} // end GOTOSOUND while loop
-
+				
 				break;
 			case IMTHEPRINCESS:
 				imThePrincess();
