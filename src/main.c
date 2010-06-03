@@ -8,11 +8,18 @@
 #define foundSoundLvl 59
 #define foundSoundLv2 59
 #define turnRadius    730
+#define maxGoLength   3000
+#define searchBuffer  10
 
 //bot 8 & 12
 //#define turnIncrement 102
 //bot 5
 //#define turnIncrement 99
+//bot 2
+//#define turnIncrement 95
+
+//bot ?
+#define turnIncrement 99
 
 //bot
 #define turnIncrement 102
@@ -29,6 +36,9 @@ short oldsoundMax;
 short peakMotorEncoder;
 short state;
 bool light = true;
+int goLength;
+float minAve = 100;
+float maxAve = 0;
 
 //states
 #define TURNFORSOUND   1
@@ -184,6 +194,15 @@ void foundPrincess() {
 
 void soundSeeking() {
 
+  motor[motorA] = 0; //Quiet the motors so we can decide if we hear anything
+  wait1Msec(500); //Wait for the motors to STFU
+  if (SensorValue[soundSensor] < searchBuffer)
+  {
+    maxAve = 75; //This is set so it knows how far to go (75 is relatively short)
+    state = GOTOSOUND;
+    return; //If we're not hearing anything, just keep trucking (no actual search)
+  }
+
   int soundReadingIndex[10] = {0,1,2,3,4,5,6,7,0,1};
   float soundReadings[8];
 
@@ -290,7 +309,8 @@ void soundSeeking() {
     case USE_3_SOFTEST:
       // Initialize temporary parameters for checking the lowest readings of sounds
       float tmp = 0;
-      float minAve = 100;
+      minAve = 100;
+      maxAve = 0;
       int minAveIndex;
       for (int i = 0; i < 8; i++)
       {
@@ -303,9 +323,20 @@ void soundSeeking() {
           minAve = tmp;
           minAveIndex = i+1;
         }
+        if (tmp > maxAve)
+        {
+          maxAve = tmp;
+        }
       }
-//      motorEncoderTarget = (turnIncrement*8) - ((soundReadingIndex[minAveIndex]+1)*turnIncrement);
-      motorEncoderTarget = (turnIncrement*8) - ((soundReadingIndex[minAveIndex]+4)*turnIncrement);
+
+      if (maxAve - minAve > soundBuffer)
+      {
+        motorEncoderTarget = (turnIncrement*8) - ((soundReadingIndex[minAveIndex]+4)*turnIncrement);
+      }
+      else
+      {
+        motorEncoderTarget = 0; //Just go straight if there's nothing but crap sound readings
+      }
       AddToDatalog(3,(soundReadingIndex[minAveIndex]+1)*45);
       AddToDatalog(4,20);
       break;
@@ -370,7 +401,9 @@ task main() {
       oldsoundMax = 0;
       nMotorEncoder[motorA] = 0;
 
-      while((nMotorEncoder[motorA] < 1440)&& (CheckBehaviorState()==TURNFORSOUND))
+      goLength = maxGoLength * 1 - (maxAve / 100);
+
+      while((nMotorEncoder[motorA] < goLength)&& (CheckBehaviorState()==TURNFORSOUND))
       {
         motor(motorA) = goSpeed;
 
