@@ -308,13 +308,13 @@ void soundSeeking() {
           minAve = tmp;
           minAveIndex = i+1;
         }
-        if (tmp < maxAve)
+        if (tmp > maxAve)
         {
           maxAve = tmp;
         }
       }
 
-      if (maxAve - minAve < soundBuffer)
+      if (maxAve - minAve > soundBuffer)
       {
         motorEncoderTarget = (turnIncrement*8) - ((soundReadingIndex[minAveIndex]+4)*turnIncrement);
       }
