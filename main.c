@@ -9,6 +9,7 @@
 #define foundSoundLv2 59
 #define turnRadius    730
 #define maxGoLength   3000
+#define searchBuffer  10
 
 //bot 8 & 12
 //#define turnIncrement 102
@@ -187,6 +188,15 @@ void foundPrincess() {
 }
 
 void soundSeeking() {
+
+  motor[motorA] = 0; //Quiet the motors so we can decide if we hear anything
+  wait1Msec(500); //Wait for the motors to STFU
+  if (SensorValue[soundSensor] < searchBuffer)
+  {
+    maxAve = 75; //This is set so it knows how far to go (75 is relatively short)
+    state = GOTOSOUND;
+    return; //If we're not hearing anything, just keep trucking (no actual search)
+  }
 
   int soundReadingIndex[10] = {0,1,2,3,4,5,6,7,0,1};
   float soundReadings[8];
@@ -387,7 +397,6 @@ task main() {
       nMotorEncoder[motorA] = 0;
 
       goLength = maxGoLength * 1 - (maxAve / 100);
-      //goLength = maxGoLength * 1 - (minAve / 100); //Alternative based on the smallest sound
 
       while((nMotorEncoder[motorA] < goLength)&& (CheckBehaviorState()==TURNFORSOUND))
       {
