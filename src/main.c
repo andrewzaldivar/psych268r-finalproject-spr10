@@ -19,7 +19,7 @@
 //#define turnIncrement 95
 
 //bot ?
-#define turnIncrement 99
+//#define turnIncrement 99
 
 //bot
 #define turnIncrement 102
