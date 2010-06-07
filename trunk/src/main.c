@@ -5,31 +5,31 @@
 
 //globals
 #define soundBuffer   15
-#define foundSoundLvl 59
-#define foundSoundLv2 59
+#define soundLv_hi    70
+#define soundLv_low   38
 #define turnRadius    730
 #define maxGoLength   3000
 #define searchBuffer  10
 
-//bot 8 & 12
+//bot 8
+//#define turnIncrement 106
+//bot 10 & 12
 //#define turnIncrement 102
-//bot 5
+//bot 5 & 6
 //#define turnIncrement 99
 //bot 2
 //#define turnIncrement 95
 
 //bot ?
-//#define turnIncrement 99
+#define turnIncrement 100
 
-//bot
-#define turnIncrement 102
 #define turnBack      0
 #define turnSpeed     30
 #define gototurnSpeed 30
 #define goSpeed       30
 
-#define TRAP_LIGHT_THRESHOLD 0
-#define DISTRESS_TIMEOUT 3000
+#define TRAP_LIGHT_THRESHOLD 41
+#define DISTRESS_TIMEOUT 35000
 
 //initiate variables
 short oldsoundMax;
@@ -90,11 +90,11 @@ bool inTrap() {
 // returns behavior state
 short CheckBehaviorState() {
 
-  if (inTrap() && SensorValue[soundSensor] < foundSoundLv2)
+  if (inTrap() && SensorValue[soundSensor] < soundLv_low)
   {
     return IMTHEPRINCESS;
   }
-  else if( ( (SensorValue[touchSensor] ==1)&&(SensorValue[soundSensor] >=foundSoundLvl) ) || (inTrap() && SensorValue[soundSensor] >= foundSoundLv2) )
+else if( ( (SensorValue[touchSensor] ==1)&&(SensorValue[soundSensor] >=soundLv_low) ) || (inTrap()) ||(SensorValue[soundSensor] >=soundLv_hi) )
   {
     return FOUNDPRINCESS;
   }
@@ -157,8 +157,12 @@ void produceDistressSignal() {
 
   nVolume = 4;
   // note: intrinsic void PlayTone(const int frequency,  const int durationIn10MsecTicks)
-  PlayTone(1184,(DISTRESS_TIMEOUT));
-  wait10Msec(DISTRESS_TIMEOUT);
+  //short tmp = DISTRESS_TIMEOUT;
+  for(short i=0; i < DISTRESS_TIMEOUT/1000; i++)
+  {
+  PlayTone(1184,(1000));
+  wait10Msec(1000);
+}
 }
 
 void moveAwayFromTrap() {
@@ -166,11 +170,11 @@ void moveAwayFromTrap() {
   // by travelling in reverse for 5 secs
   wait10Msec(200);
   motor(motorA) = -1*goSpeed;
-  wait1Msec(5000);
+  wait1Msec(1300);
   motor(motorA) = 0;
   TurnRight(180);
   TurnRight(180);
-  state = GOTOSOUND;
+  state = TURNFORSOUND;
 }
 
 void imThePrincess() {
@@ -183,10 +187,13 @@ void imThePrincess() {
 }
 
 void foundPrincess() {
+  DisplayData(SensorValue[soundSensor],false);
   motor(motorA) = 0;
   motor(motorB) = 0;
   wait10Msec(200);
-  while(SensorValue[soundSensor] > foundSoundLv2) {
+  while(SensorValue[soundSensor] > 25) {
+    DisplayData(SensorValue[soundSensor],true);
+    wait10Msec(10);
   }
   moveAwayFromTrap();
   state = GOTOSOUND;
@@ -194,6 +201,7 @@ void foundPrincess() {
 
 void soundSeeking() {
 
+  /*
   motor[motorA] = 0; //Quiet the motors so we can decide if we hear anything
   wait1Msec(500); //Wait for the motors to STFU
   if (SensorValue[soundSensor] < searchBuffer)
@@ -202,7 +210,7 @@ void soundSeeking() {
     state = GOTOSOUND;
     return; //If we're not hearing anything, just keep trucking (no actual search)
   }
-
+*/
   int soundReadingIndex[10] = {0,1,2,3,4,5,6,7,0,1};
   float soundReadings[8];
 
@@ -323,20 +331,21 @@ void soundSeeking() {
           minAve = tmp;
           minAveIndex = i+1;
         }
-        if (tmp > maxAve)
-        {
-          maxAve = tmp;
-        }
+
+//        if (tmp > maxAve)
+//        {
+//          maxAve = tmp;
+//        }
       }
 
-      if (maxAve - minAve > soundBuffer)
-      {
+//      if (maxAve - minAve > soundBuffer)
+//      {
         motorEncoderTarget = (turnIncrement*8) - ((soundReadingIndex[minAveIndex]+4)*turnIncrement);
-      }
-      else
-      {
-        motorEncoderTarget = 0; //Just go straight if there's nothing but crap sound readings
-      }
+//      }
+//      else
+//      {
+//        motorEncoderTarget = 0; //Just go straight if there's nothing but crap sound readings
+//      }
       AddToDatalog(3,(soundReadingIndex[minAveIndex]+1)*45);
       AddToDatalog(4,20);
       break;
@@ -401,7 +410,8 @@ task main() {
       oldsoundMax = 0;
       nMotorEncoder[motorA] = 0;
 
-      goLength = maxGoLength * 1 - (maxAve / 100);
+      //goLength = maxGoLength * 1 - (maxAve / 100);
+      goLength = 1440;
 
       while((nMotorEncoder[motorA] < goLength)&& (CheckBehaviorState()==TURNFORSOUND))
       {
